@@ -1,55 +1,30 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-"""
-Pymodbus Server With Updating Thread
---------------------------------------------------------------------------
-
-This is an example of having a background thread updating the
-context while the server is operating. This can also be done with
-a python thread::
-
-    from threading import Thread
-
-    thread = Thread(target=updating_writer, args=(context,))
-    thread.start()
-"""
-# --------------------------------------------------------------------------- #
-# import the modbus libraries we need
-# --------------------------------------------------------------------------- #
 from pymodbus.server.asynchronous import StartTcpServer
 from pymodbus.device import ModbusDeviceIdentification
 from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 from pymodbus.transaction import ModbusRtuFramer, ModbusAsciiFramer
 from threading import Thread
-
-# --------------------------------------------------------------------------- #
-# import the twisted libraries we need
-# --------------------------------------------------------------------------- #
-from twisted.internet.task import LoopingCall
-
-# --------------------------------------------------------------------------- #
-# configure the service logging
-# --------------------------------------------------------------------------- #
+import paho.mqtt.client as mqtt_client
 import logging
+import time
+
+__author__ = "Richard Kubicek"
+__copyright__ = "Copyright 2019, FEEC BUT Brno"
+__credits__ = ["Richard Kubicek"]
+__license__ = "Proprietary"
+__version__ = "1.0.0"
+__maintainer__ = "Richard Kubicek"
+__email__ = "xkubic35@vutbr.cz"
+__status__ = "Private Beta"
 
 logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 
 
-# --------------------------------------------------------------------------- #
-# define your callback process
-# --------------------------------------------------------------------------- #
-import time
-
 def updating_writer(a):
-    """ A worker process that runs every so often and
-    updates live values of the context. It should be noted
-    that there is a race condition for the update.
-
-    :param arguments: The input arguments to the call
-    """
     while True:
         log.debug("updating the context")
         context = a._slaves
@@ -64,10 +39,6 @@ def updating_writer(a):
 
 
 def run_updating_server():
-    # ----------------------------------------------------------------------- #
-    # initialize your data store
-    # ----------------------------------------------------------------------- #
-
     st = ModbusSlaveContext(
         di=ModbusSequentialDataBlock(0, [17] * 100),
         co=ModbusSequentialDataBlock(0, [17] * 100),
@@ -83,23 +54,14 @@ def run_updating_server():
     store[1] = st2
     context = ModbusServerContext(slaves=store, single=False)
 
-    # ----------------------------------------------------------------------- #
-    # initialize the server information
-    # ----------------------------------------------------------------------- #
     identity = ModbusDeviceIdentification()
-    identity.VendorName = 'pymodbus'
+    identity.VendorName = 'FEKT VUTBR'
     identity.ProductCode = 'AAS'
-    identity.VendorUrl = 'http://github.com/bashwork/pymodbus/'
-    identity.ProductName = 'pymodbus Server'
-    identity.ModelName = 'pymodbus Server'
+    identity.VendorUrl = 'https://www.fekt.vut.cz/'
+    identity.ProductName = 'AAS modbus server'
+    identity.ModelName = 'AAS module'
     identity.MajorMinorRevision = '1.0.0'
 
-    # ----------------------------------------------------------------------- #
-    # run the server you want
-    # ----------------------------------------------------------------------- #
-    time = 5  # 5 seconds delay
-    #loop = LoopingCall(f=updating_writer, a=(context,))
-    #loop.start(time, now=False)  # initially delay by time
     thread = Thread(target=updating_writer, args=(context,))
     thread.start()
     StartTcpServer(context, identity=identity, address=("localhost", 5020))
