@@ -1,93 +1,109 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
-Pymodbus Server Payload Example
+Pymodbus Server With Updating Thread
 --------------------------------------------------------------------------
 
-If you want to initialize a server context with a complicated memory
-layout, you can actually use the payload builder.
+This is an example of having a background thread updating the
+context while the server is operating. This can also be done with
+a python thread::
+
+    from threading import Thread
+
+    thread = Thread(target=updating_writer, args=(context,))
+    thread.start()
 """
 # --------------------------------------------------------------------------- #
-# import the various server implementations
+# import the modbus libraries we need
 # --------------------------------------------------------------------------- #
-from pymodbus.server.sync import StartTcpServer
-
+from pymodbus.server.asynchronous import StartTcpServer
 from pymodbus.device import ModbusDeviceIdentification
 from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
+from pymodbus.transaction import ModbusRtuFramer, ModbusAsciiFramer
+from threading import Thread
 
 # --------------------------------------------------------------------------- #
-# import the payload builder
+# import the twisted libraries we need
 # --------------------------------------------------------------------------- #
-
-from pymodbus.constants import Endian
-from pymodbus.payload import BinaryPayloadDecoder
-from pymodbus.payload import BinaryPayloadBuilder
+from twisted.internet.task import LoopingCall
 
 # --------------------------------------------------------------------------- #
 # configure the service logging
 # --------------------------------------------------------------------------- #
 import logging
-FORMAT = ('%(asctime)-15s %(threadName)-15s'
-          ' %(levelname)-8s %(module)-15s:%(lineno)-8s %(message)s')
-logging.basicConfig(format=FORMAT)
+
+logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 
 
-def run_payload_server():
-    # ----------------------------------------------------------------------- #
-    # build your payload
-    # ----------------------------------------------------------------------- #
-    builder = BinaryPayloadBuilder(byteorder=Endian.Little,
-                                   wordorder=Endian.Little)
-    builder.add_string('abcdefgh')
-    builder.add_bits([0, 1, 0, 1, 1, 0, 1, 0])
-    builder.add_8bit_int(-0x12)
-    builder.add_8bit_uint(0x12)
-    builder.add_16bit_int(-0x5678)
-    builder.add_16bit_uint(0x1234)
-    builder.add_32bit_int(-0x1234)
-    builder.add_32bit_uint(0x12345678)
-    builder.add_32bit_float(22.34)
-    builder.add_32bit_float(-22.34)
-    builder.add_64bit_int(-0xDEADBEEF)
-    builder.add_64bit_uint(0x12345678DEADBEEF)
-    builder.add_64bit_uint(0xDEADBEEFDEADBEED)
-    builder.add_64bit_float(123.45)
-    builder.add_64bit_float(-123.45)
+# --------------------------------------------------------------------------- #
+# define your callback process
+# --------------------------------------------------------------------------- #
+import time
+
+def updating_writer(a):
+    """ A worker process that runs every so often and
+    updates live values of the context. It should be noted
+    that there is a race condition for the update.
+
+    :param arguments: The input arguments to the call
+    """
+    while True:
+        log.debug("updating the context")
+        context = a._slaves
+        register = 3
+        slave_id = 0x00
+        address = 0x10
+        values = context[slave_id].getValues(register, address, count=5)
+        values = [v + 1 for v in values]
+        log.debug("new values: " + str(values))
+        context[slave_id].setValues(register, address, values)
+        time.sleep(5)
 
 
+def run_updating_server():
     # ----------------------------------------------------------------------- #
-    # use that payload in the data store
-    # ----------------------------------------------------------------------- #
-    # Here we use the same reference block for each underlying store.
+    # initialize your data store
     # ----------------------------------------------------------------------- #
 
-    block = ModbusSequentialDataBlock(1, builder.to_registers())
-    store = ModbusSlaveContext(di=block, co=block, hr=block, ir=block)
-    st = dict()
-    st[0] = store
-    st[1] = store
-    context = ModbusServerContext(slaves=st, single=True)
+    st = ModbusSlaveContext(
+        di=ModbusSequentialDataBlock(0, [17] * 100),
+        co=ModbusSequentialDataBlock(0, [17] * 100),
+        hr=ModbusSequentialDataBlock(0, [17] * 100),
+        ir=ModbusSequentialDataBlock(0, [17] * 100))
+    st2 = ModbusSlaveContext(
+        di=ModbusSequentialDataBlock(0, [18] * 100),
+        co=ModbusSequentialDataBlock(0, [18] * 100),
+        hr=ModbusSequentialDataBlock(0, [18] * 100),
+        ir=ModbusSequentialDataBlock(0, [18] * 100))
+    store = {}
+    store[0] = st
+    store[1] = st2
+    context = ModbusServerContext(slaves=store, single=False)
 
     # ----------------------------------------------------------------------- #
     # initialize the server information
     # ----------------------------------------------------------------------- #
-    # If you don't set this or any fields, they are defaulted to empty strings.
-    # ----------------------------------------------------------------------- #
     identity = ModbusDeviceIdentification()
-    identity.VendorName = 'Pymodbus'
-    identity.ProductCode = 'PM'
+    identity.VendorName = 'pymodbus'
+    identity.ProductCode = 'AAS'
     identity.VendorUrl = 'http://github.com/bashwork/pymodbus/'
-    identity.ProductName = 'Pymodbus Server'
-    identity.ModelName = 'Pymodbus Server'
-    identity.MajorMinorRevision = '2.3.0'
+    identity.ProductName = 'pymodbus Server'
+    identity.ModelName = 'pymodbus Server'
+    identity.MajorMinorRevision = '1.0.0'
+
     # ----------------------------------------------------------------------- #
     # run the server you want
     # ----------------------------------------------------------------------- #
-    StartTcpServer(context, identity=identity, address=("192.168.5.37", 502))
+    time = 5  # 5 seconds delay
+    #loop = LoopingCall(f=updating_writer, a=(context,))
+    #loop.start(time, now=False)  # initially delay by time
+    thread = Thread(target=updating_writer, args=(context,))
+    thread.start()
+    StartTcpServer(context, identity=identity, address=("localhost", 5020))
 
 
 if __name__ == "__main__":
-    run_payload_server()
+    run_updating_server()
