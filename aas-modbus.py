@@ -10,6 +10,7 @@ import paho.mqtt.client as mqtt_client
 import logging
 import time
 import json
+import msgpack
 
 __author__ = "Richard Kubicek"
 __copyright__ = "Copyright 2019, FEEC BUT Brno"
@@ -33,6 +34,9 @@ LL_READER_STATUS_TOPIC = LL_READER_TOPIC + "/state"
 LL_SPI_MSG_TOPIC = LL_SPI_TOPIC + "/msg"
 LL_LED_TOPIC = LL_SPI_TOPIC + "/led"
 
+SLAVE_ID_BUTTONS = 0
+
+context = None
 
 class Aas:
     _mqtt = mqtt_client.Client()
@@ -58,29 +62,29 @@ class Aas:
 
 
 def on_touch(moqs, obj, msg):
+    global context
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
 
     try:
-        data = json.loads(msg.payload.decode("utf-8"))
-        obj.spi.led.prepare_data(data["led_0"]["red"], data["led_0"]["green"], data["led_0"]["blue"],
-                                 data["led_0"]["brightness"], 0)
-        obj.spi.led.prepare_data(data["led_1"]["red"], data["led_1"]["green"], data["led_1"]["blue"],
-                                 data["led_1"]["brightness"], 1)
-        obj.spi.led.prepare_data(data["led_2"]["red"], data["led_2"]["green"], data["led_2"]["blue"],
-                                 data["led_2"]["brightness"], 2)
-        obj.spi.led.prepare_data(data["led_3"]["red"], data["led_3"]["green"], data["led_3"]["blue"],
-                                 data["led_3"]["brightness"], 3)
-        obj.spi.send_led = True
-    except json.JSONDecodeError:
+        raw = json.loads(msg.payload.decode("utf-8"))
+        packed = msgpack.packb(raw)
+
+        _context = context._slaves
+        register = 3
+        slave_id = SLAVE_ID_BUTTONS
+        address = 0x10
+        values = _context[slave_id].getValues(register, address, count=5)
+        values = [v for v in packed]
+        aas.logger_debug("new values: " + str(values))
+        _context[slave_id].setValues(register, address, values)
+    except:
         obj.logger_error("MQTT: received msq is not json with expected information")
 
 
 def on_connect(mqtt_client, obj, flags, rc):
     if rc == 0:
         obj.mqtt_ready = True
-        obj.mqtt().subscribe(LL_DISPLAY_TOPIC)
-        obj.mqtt().subscribe(LL_LED_TOPIC)
-        obj.mqtt().subscribe(LL_READER_DATA_WRITE_TOPIC)
+        obj.mqtt().subscribe(LL_TOUCH_TOPIC)
     else:
         obj.mqtt_ready = 0
         retry_time = 2
@@ -92,21 +96,23 @@ def on_connect(mqtt_client, obj, flags, rc):
                 rc = 1
                 retry_time = 5
 
-def updating_writer(a):
+
+def updating_writer(a, aas):
     while True:
-        log.debug("updating the context")
-        context = a._slaves
+        aas.logger_debug("updating the context")
+        _context = a._slaves
         register = 3
         slave_id = 0x00
         address = 0x10
-        values = context[slave_id].getValues(register, address, count=5)
+        values = _context[slave_id].getValues(register, address, count=5)
         values = [v + 1 for v in values]
-        log.debug("new values: " + str(values))
-        context[slave_id].setValues(register, address, values)
+        aas.logger_debug("new values: " + str(values))
+        _context[slave_id].setValues(register, address, values)
         time.sleep(5)
 
 
-def run_updating_server():
+def run_updating_server(aas):
+    global context
     st = ModbusSlaveContext(
         di=ModbusSequentialDataBlock(0, [17] * 100),
         co=ModbusSequentialDataBlock(0, [17] * 100),
@@ -130,15 +136,13 @@ def run_updating_server():
     identity.ModelName = 'AAS module'
     identity.MajorMinorRevision = '1.0.0'
 
-    thread = Thread(target=updating_writer, args=(context,))
-    thread.start()
     StartTcpServer(context, identity=identity, address=("localhost", 5020))
 
 
 if __name__ == "__main__":
     aas = Aas()
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("/var/log/aas-modbus.txt")
+    fh = logging.FileHandler("aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -157,4 +161,6 @@ if __name__ == "__main__":
     aas.mqtt().user_data_set(aas)
     aas.mqtt().message_callback_add(LL_TOUCH_TOPIC, on_touch)
 
-    run_updating_server()
+    aas.mqtt().loop_start()
+
+    run_updating_server(aas)
