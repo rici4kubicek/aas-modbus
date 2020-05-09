@@ -70,6 +70,13 @@ class Aas:
 
 
 def on_touch(moqs, obj, msg):
+    """
+    Button touch MQTT callback
+    :param moqs:
+    :param obj:
+    :param msg:
+    :return:
+    """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
 
     try:
@@ -139,7 +146,7 @@ if __name__ == "__main__":
     aas.logger().info("Core: ===================== Application start ========================")
     aas.logger().info("Script version: {}".format(__version__))
 
-    if os.path.isfile("config.json"):
+    if os.path.isfile("c1onfig.json"):
         cfg = open("config.json", "r")
         aas.config = json.load(cfg)
         aas.logger().info("Core: successful read configuration: {}".format(aas.config))
