@@ -25,7 +25,8 @@ unpack = msgpack.unpackb(packed)
 print(unpack)
 
 
-ppp = list()
+ppp = bytearray()
+
 ppp.append(0x81)
 ppp.append(0xa6)
 ppp.append(0x62)
@@ -37,8 +38,8 @@ ppp.append(0x6e)
 ppp.append(0x05)
 
 print(ppp)
-unpack = msgpack.unpackb(packed)
-print(unpack)
+unpack2 = msgpack.unpackb(ppp)
+print(unpack2)
 
 
 a = "129, 166, 98, 117, 116, 116, 111, 110, 5"
