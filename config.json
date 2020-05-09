@@ -1,6 +1,6 @@
 {
   "port": 5020,
-  "use_msgpack": true,
+  "use_msgpack": false,
   "slave_id": {
     "reader_data_read": 0,
     "reader_data_write": 1,

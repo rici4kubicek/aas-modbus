@@ -78,14 +78,18 @@ def on_touch(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
-
     try:
-        raw = json.loads(msg.payload.decode("utf-8"))
-        packed = msgpack.packb(raw)
+        if obj.config["use_msgpack"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            packed = msgpack.packb(raw)
 
-        values = [v for v in packed]
-        aas.logger_debug("new values: " + str(values))
-        obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
+            values = [v for v in packed]
+            aas.logger_debug("new values: " + str(values))
+            obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
+        else:  # if msgpack is not allow save bare json
+            values = [ord(v) for v in msg.payload.decode("utf-8")]
+            aas.logger_debug("new values: " + str(values))
+            obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
     except:
         obj.logger_error("MQTT: received msq cannot be processed")
 
@@ -146,7 +150,7 @@ if __name__ == "__main__":
     aas.logger().info("Core: ===================== Application start ========================")
     aas.logger().info("Script version: {}".format(__version__))
 
-    if os.path.isfile("c1onfig.json"):
+    if os.path.isfile("config.json"):
         cfg = open("config.json", "r")
         aas.config = json.load(cfg)
         aas.logger().info("Core: successful read configuration: {}".format(aas.config))
