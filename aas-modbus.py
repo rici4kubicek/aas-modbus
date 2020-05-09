@@ -78,9 +78,9 @@ def on_touch(moqs, obj, msg):
 
         values = [v for v in packed]
         aas.logger_debug("new values: " + str(values))
-        obj.context[DefaultSlavesID.SLAVE_ID_BUTTONS.value].setValues(3, 0x10, values)
+        obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
     except:
-        obj.logger_error("MQTT: received msq is not json with expected information")
+        obj.logger_error("MQTT: received msq cannot be processed")
 
 
 def on_connect(mqtt_client, obj, flags, rc):
@@ -102,8 +102,8 @@ def on_connect(mqtt_client, obj, flags, rc):
 def run_updating_server(aas_):
     # prepare data context
     store = {}
-    for slave in DefaultSlavesID:
-        store[slave.value] = ModbusSlaveContext(
+    for key, value in aas.config["slave_id"].items():
+        store[value] = ModbusSlaveContext(
             di=ModbusSequentialDataBlock(0, [0xffff] * 100),
             co=ModbusSequentialDataBlock(0, [0xffff] * 100),
             hr=ModbusSequentialDataBlock(0, [0xffff] * 100),
