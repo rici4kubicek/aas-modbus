@@ -94,6 +94,31 @@ def on_touch(moqs, obj, msg):
         obj.logger_error("MQTT: received msq cannot be processed")
 
 
+def on_reader_read(moqs, obj, msg):
+    """
+    Reader data read MQTT callback
+    :param moqs:
+    :param obj:
+    :param msg:
+    :return:
+    """
+    obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
+    try:
+        if obj.config["use_msgpack"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            packed = msgpack.packb(raw)
+
+            values = [v for v in packed]
+            aas.logger_debug("new values: " + str(values))
+            obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
+        else:  # if msgpack is not allow save bare json
+            values = [ord(v) for v in msg.payload.decode("utf-8")]
+            aas.logger_debug("new values: " + str(values))
+            obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
+    except:
+        obj.logger_error("MQTT: received msq cannot be processed")
+
+
 def on_connect(mosq, obj, flags, rc):
     if rc == 0:
         obj.mqtt_ready = True
@@ -169,6 +194,7 @@ if __name__ == "__main__":
     aas.mqtt().on_connect = on_connect
     aas.mqtt().user_data_set(aas)
     aas.mqtt().message_callback_add(LL_TOUCH_TOPIC, on_touch)
+    aas.mqtt().message_callback_add(LL_READER_DATA_READ_TOPIC, on_reader_read)
 
     aas.mqtt().loop_start()
 
