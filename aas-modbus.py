@@ -148,7 +148,6 @@ def check_parse_and_send_values(aas_, topic, values_, default_val):
         dta = bytearray()
         for i in values_:
             if i != 0xffff:
-                dta.append((i >> 8) & 0xff)
                 dta.append(i & 0xff)
             if dta[len(dta) - 1] == 0:
                 dta.pop(len(dta) - 1)
