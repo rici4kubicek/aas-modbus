@@ -41,9 +41,10 @@ LL_LED_TOPIC = LL_SPI_TOPIC + "/led"
 class DefaultSlavesID(Enum):
     SLAVE_ID_READER_DATA_READ = 0
     SLAVE_ID_READER_DATA_WRITE = 1
-    SLAVE_ID_BUTTONS = 2
-    SLAVE_ID_DISPLAY = 3
-    SLAVE_ID_LED = 4
+    SLAVE_ID_READER_STATUS = 2
+    SLAVE_ID_BUTTONS = 3
+    SLAVE_ID_DISPLAY = 4
+    SLAVE_ID_LED = 5
 
 
 class Aas:
@@ -87,10 +88,9 @@ def on_touch(moqs, obj, msg):
             packed = msgpack.packb(raw)
 
             values = [v for v in packed]
-            aas.logger_debug("new values: " + str(values))
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
-            aas.logger_debug("new values: " + str(values))
+        aas.logger_debug("Buttons: new values: " + str(values))
         # setup default values and then set received values
         obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, default_values)
         obj.context[aas.config["slave_id"]["buttons"]].setValues(4, 0, default_values)
@@ -116,15 +116,42 @@ def on_reader_read(moqs, obj, msg):
             packed = msgpack.packb(raw)
 
             values = [v for v in packed]
-            aas.logger_debug("new values: " + str(values))
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
-            aas.logger_debug("new values: " + str(values))
+        aas.logger_debug("Reader data read: new values: " + str(values))
         # setup default values and then set received values
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, default_values)
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(4, 0, default_values)
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(4, 0, values)
+    except:
+        obj.logger_error("MQTT: received msq cannot be processed")
+
+
+def on_reader_status(moqs, obj, msg):
+    """
+    Reader status MQTT callback
+    :param moqs:
+    :param obj:
+    :param msg:
+    :return:
+    """
+    obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
+    default_values = [0xffff] * 254
+    try:
+        if obj.config["use_msgpack"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            packed = msgpack.packb(raw)
+
+            values = [v for v in packed]
+        else:  # if msgpack is not allow save bare json
+            values = [ord(v) for v in msg.payload.decode("utf-8")]
+        aas.logger_debug("Reader status: new values: " + str(values))
+        # setup default values and then set received values
+        obj.context[aas.config["slave_id"]["reader_status"]].setValues(3, 0, default_values)
+        obj.context[aas.config["slave_id"]["reader_status"]].setValues(4, 0, default_values)
+        obj.context[aas.config["slave_id"]["reader_status"]].setValues(3, 0, values)
+        obj.context[aas.config["slave_id"]["reader_status"]].setValues(4, 0, values)
     except:
         obj.logger_error("MQTT: received msq cannot be processed")
 
@@ -253,6 +280,7 @@ if __name__ == "__main__":
         aas.config["slave_id"] = dict()
         aas.config["slave_id"]["reader_data_read"] = DefaultSlavesID.SLAVE_ID_READER_DATA_READ.value
         aas.config["slave_id"]["reader_data_write"] = DefaultSlavesID.SLAVE_ID_READER_DATA_WRITE.value
+        aas.config["slave_id"]["reader_status"] = DefaultSlavesID.SLAVE_ID_READER_STATUS.value
         aas.config["slave_id"]["buttons"] = DefaultSlavesID.SLAVE_ID_BUTTONS.value
         aas.config["slave_id"]["display"] = DefaultSlavesID.SLAVE_ID_DISPLAY.value
         aas.config["slave_id"]["led"] = DefaultSlavesID.SLAVE_ID_LED.value
@@ -264,6 +292,7 @@ if __name__ == "__main__":
     aas.mqtt().user_data_set(aas)
     aas.mqtt().message_callback_add(LL_TOUCH_TOPIC, on_touch)
     aas.mqtt().message_callback_add(LL_READER_DATA_READ_TOPIC, on_reader_read)
+    aas.mqtt().message_callback_add(LL_READER_STATUS_TOPIC, on_reader_status)
 
     aas.mqtt().loop_start()
 
