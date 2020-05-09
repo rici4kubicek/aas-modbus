@@ -11,6 +11,7 @@ import logging
 import time
 import json
 import msgpack
+from enum import Enum
 
 __author__ = "Richard Kubicek"
 __copyright__ = "Copyright 2019, FEEC BUT Brno"
@@ -34,7 +35,12 @@ LL_READER_STATUS_TOPIC = LL_READER_TOPIC + "/state"
 LL_SPI_MSG_TOPIC = LL_SPI_TOPIC + "/msg"
 LL_LED_TOPIC = LL_SPI_TOPIC + "/led"
 
-SLAVE_ID_BUTTONS = 0
+
+class SlavesID(Enum):
+    SLAVE_ID_READER_DATA_READ = 0
+    SLAVE_ID_READER_DATA_WRITE = 1
+    SLAVE_ID_BUTTONS = 2
+    SLAVE_ID_DISPLAY = 3
 
 
 class Aas:
@@ -70,7 +76,7 @@ def on_touch(moqs, obj, msg):
 
         values = [v for v in packed]
         aas.logger_debug("new values: " + str(values))
-        obj.context[SLAVE_ID_BUTTONS].setValues(3, 0x10, values)
+        obj.context[SlavesID.SLAVE_ID_BUTTONS.value].setValues(3, 0x10, values)
     except:
         obj.logger_error("MQTT: received msq is not json with expected information")
 
@@ -105,19 +111,17 @@ def updating_writer(a, aas):
         time.sleep(5)
 
 
-def run_updating_server(aas):
-    st = ModbusSlaveContext(
-        di=ModbusSequentialDataBlock(0, [17] * 100),
-        co=ModbusSequentialDataBlock(0, [17] * 100),
-        hr=ModbusSequentialDataBlock(0, [17] * 100),
-        ir=ModbusSequentialDataBlock(0, [17] * 100))
-    st2 = ModbusSlaveContext(
-        di=ModbusSequentialDataBlock(0, [18] * 100),
-        co=ModbusSequentialDataBlock(0, [18] * 100),
-        hr=ModbusSequentialDataBlock(0, [18] * 100),
-        ir=ModbusSequentialDataBlock(0, [18] * 100))
-    store = {0: st, 1: st2}
-    aas.context = ModbusServerContext(slaves=store, single=False)
+def run_updating_server(aas_):
+    store = {}
+    for slave in SlavesID:
+        print(slave.value)
+        store[slave.value] = ModbusSlaveContext(
+            di=ModbusSequentialDataBlock(0, [0xffff] * 100),
+            co=ModbusSequentialDataBlock(0, [0xffff] * 100),
+            hr=ModbusSequentialDataBlock(0, [0xffff] * 100),
+            ir=ModbusSequentialDataBlock(0, [0xffff] * 100))
+
+    aas_.context = ModbusServerContext(slaves=store, single=False)
 
     identity = ModbusDeviceIdentification()
     identity.VendorName = 'FEKT VUTBR'
@@ -127,7 +131,7 @@ def run_updating_server(aas):
     identity.ModelName = 'AAS module'
     identity.MajorMinorRevision = '1.0.0'
 
-    StartTcpServer(aas.context, identity=identity, address=("localhost", 5020))
+    StartTcpServer(aas_.context, identity=identity, address=("localhost", 5020))
 
 
 if __name__ == "__main__":
