@@ -42,6 +42,7 @@ class DefaultSlavesID(Enum):
     SLAVE_ID_READER_DATA_WRITE = 1
     SLAVE_ID_BUTTONS = 2
     SLAVE_ID_DISPLAY = 3
+    SLAVE_ID_LED = 4
 
 
 class Aas:
@@ -78,6 +79,7 @@ def on_touch(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
+    default_values = [0xffff] * 254
     try:
         if obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
@@ -85,11 +87,13 @@ def on_touch(moqs, obj, msg):
 
             values = [v for v in packed]
             aas.logger_debug("new values: " + str(values))
-            obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
             aas.logger_debug("new values: " + str(values))
-            obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
+        obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, default_values)
+        obj.context[aas.config["slave_id"]["buttons"]].setValues(4, 0, default_values)
+        obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
+        obj.context[aas.config["slave_id"]["buttons"]].setValues(4, 0, values)
     except:
         obj.logger_error("MQTT: received msq cannot be processed")
 
@@ -103,6 +107,7 @@ def on_reader_read(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
+    default_values = [0xffff] * 254
     try:
         if obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
@@ -110,11 +115,13 @@ def on_reader_read(moqs, obj, msg):
 
             values = [v for v in packed]
             aas.logger_debug("new values: " + str(values))
-            obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
             aas.logger_debug("new values: " + str(values))
-            obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
+        obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, default_values)
+        obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(4, 0, default_values)
+        obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
+        obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(4, 0, values)
     except:
         obj.logger_error("MQTT: received msq cannot be processed")
 
@@ -135,15 +142,59 @@ def on_connect(mosq, obj, flags, rc):
                 retry_time = 5
 
 
+def check_parse_and_send_values(aas_, topic, values_, default_val):
+    diff = False
+    if values_ != default_val:
+        dta = bytearray()
+        for i in values_:
+            if i != 0xffff:
+                dta.append((i >> 8) & 0xff)
+                dta.append(i & 0xff)
+            if dta[len(dta) - 1] == 0:
+                dta.pop(len(dta) - 1)
+
+        if aas_.config["use_msgpack"]:
+            try:
+                data = msgpack.unpackb(dta)
+            except:
+                data = ""
+                aas_.logger_error("MessagePack: received msq cannot be processed")
+        else:
+            data = dta.decode("utf-8")
+        aas_.mqtt().publish(topic, "{}".format(data))
+        diff = True
+        return diff
+    else:
+        return diff
+
+
+def get_written_values(aas_):
+    default_values = [0xffff] * 254
+    while True:
+        values = aas_.context[aas_.config["slave_id"]["led"]].getValues(0x10, 0, 254)
+        if check_parse_and_send_values(aas_, LL_LED_TOPIC, values, default_values):
+            aas_.context[aas_.config["slave_id"]["led"]].setValues(0x10, 0, default_values)
+
+        values = aas_.context[aas_.config["slave_id"]["display"]].getValues(0x10, 0, 254)
+        if check_parse_and_send_values(aas_, LL_DISPLAY_TOPIC, values, default_values):
+            aas_.context[aas_.config["slave_id"]["display"]].setValues(0x10, 0, default_values)
+
+        values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
+        if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
+            aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
+
+        time.sleep(1)
+
+
 def run_updating_server(aas_):
     # prepare data context
     store = {}
     for key, value in aas.config["slave_id"].items():
         store[value] = ModbusSlaveContext(
-            di=ModbusSequentialDataBlock(0, [0xffff] * 100),
-            co=ModbusSequentialDataBlock(0, [0xffff] * 100),
-            hr=ModbusSequentialDataBlock(0, [0xffff] * 100),
-            ir=ModbusSequentialDataBlock(0, [0xffff] * 100))
+            di=ModbusSequentialDataBlock(0, [0xffff] * 255),
+            co=ModbusSequentialDataBlock(0, [0xffff] * 255),
+            hr=ModbusSequentialDataBlock(0, [0xffff] * 255),
+            ir=ModbusSequentialDataBlock(0, [0xffff] * 255))
 
     aas_.context = ModbusServerContext(slaves=store, single=False)
 
@@ -155,6 +206,9 @@ def run_updating_server(aas_):
     identity.ProductName = 'AAS modbus server'
     identity.ModelName = 'AAS module'
     identity.MajorMinorRevision = '1.0.0'
+
+    thread = Thread(target=get_written_values, args=(aas_,))
+    thread.start()
 
     StartTcpServer(aas_.context, identity=identity, address=("localhost", aas.config["port"]))
 
@@ -189,6 +243,7 @@ if __name__ == "__main__":
         aas.config["slave_id"]["reader_data_write"] = DefaultSlavesID.SLAVE_ID_READER_DATA_WRITE.value
         aas.config["slave_id"]["buttons"] = DefaultSlavesID.SLAVE_ID_BUTTONS.value
         aas.config["slave_id"]["display"] = DefaultSlavesID.SLAVE_ID_DISPLAY.value
+        aas.config["slave_id"]["led"] = DefaultSlavesID.SLAVE_ID_LED.value
         aas.logger().error("Core: Set default configuration: {}".format(aas.config))
 
     # connect to MQTT broker
