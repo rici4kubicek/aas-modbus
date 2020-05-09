@@ -36,7 +36,6 @@ LL_LED_TOPIC = LL_SPI_TOPIC + "/led"
 
 SLAVE_ID_BUTTONS = 0
 
-context = None
 
 class Aas:
     _mqtt = mqtt_client.Client()
@@ -44,6 +43,7 @@ class Aas:
 
     def __init__(self):
         self.mqtt_ready = False
+        self.context = None
 
     def publish(self, topic, data):
         self._mqtt.publish(topic, data)
@@ -62,21 +62,15 @@ class Aas:
 
 
 def on_touch(moqs, obj, msg):
-    global context
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
 
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
         packed = msgpack.packb(raw)
 
-        _context = context._slaves
-        register = 3
-        slave_id = SLAVE_ID_BUTTONS
-        address = 0x10
-        values = _context[slave_id].getValues(register, address, count=5)
         values = [v for v in packed]
         aas.logger_debug("new values: " + str(values))
-        _context[slave_id].setValues(register, address, values)
+        obj.context[SLAVE_ID_BUTTONS].setValues(3, 0x10, values)
     except:
         obj.logger_error("MQTT: received msq is not json with expected information")
 
@@ -112,7 +106,6 @@ def updating_writer(a, aas):
 
 
 def run_updating_server(aas):
-    global context
     st = ModbusSlaveContext(
         di=ModbusSequentialDataBlock(0, [17] * 100),
         co=ModbusSequentialDataBlock(0, [17] * 100),
@@ -123,10 +116,8 @@ def run_updating_server(aas):
         co=ModbusSequentialDataBlock(0, [18] * 100),
         hr=ModbusSequentialDataBlock(0, [18] * 100),
         ir=ModbusSequentialDataBlock(0, [18] * 100))
-    store = {}
-    store[0] = st
-    store[1] = st2
-    context = ModbusServerContext(slaves=store, single=False)
+    store = {0: st, 1: st2}
+    aas.context = ModbusServerContext(slaves=store, single=False)
 
     identity = ModbusDeviceIdentification()
     identity.VendorName = 'FEKT VUTBR'
@@ -136,7 +127,7 @@ def run_updating_server(aas):
     identity.ModelName = 'AAS module'
     identity.MajorMinorRevision = '1.0.0'
 
-    StartTcpServer(context, identity=identity, address=("localhost", 5020))
+    StartTcpServer(aas.context, identity=identity, address=("localhost", 5020))
 
 
 if __name__ == "__main__":
