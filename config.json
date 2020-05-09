@@ -5,6 +5,7 @@
     "reader_data_read": 0,
     "reader_data_write": 1,
     "buttons": 2,
-    "display": 3
+    "display": 3,
+    "led": 4
   }
 }
