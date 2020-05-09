@@ -94,7 +94,7 @@ def on_touch(moqs, obj, msg):
         obj.logger_error("MQTT: received msq cannot be processed")
 
 
-def on_connect(mqtt_client, obj, flags, rc):
+def on_connect(mosq, obj, flags, rc):
     if rc == 0:
         obj.mqtt_ready = True
         obj.mqtt().subscribe(LL_TOUCH_TOPIC)
@@ -104,7 +104,7 @@ def on_connect(mqtt_client, obj, flags, rc):
         while rc != 0:
             time.sleep(retry_time)
             try:
-                rc = mqtt_client.reconnect()
+                rc = mosq.reconnect()
             except Exception as e:
                 rc = 1
                 retry_time = 5
