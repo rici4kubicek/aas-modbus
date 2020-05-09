@@ -161,6 +161,7 @@ def run_updating_server(aas_):
 
 if __name__ == "__main__":
     aas = Aas()
+    # setup logger
     aas.logger().setLevel(logging.DEBUG)
     fh = logging.FileHandler("aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
@@ -175,6 +176,7 @@ if __name__ == "__main__":
     aas.logger().info("Core: ===================== Application start ========================")
     aas.logger().info("Script version: {}".format(__version__))
 
+    # prepare configuration
     if os.path.isfile("config.json"):
         cfg = open("config.json", "r")
         aas.config = json.load(cfg)
