@@ -97,21 +97,8 @@ def on_connect(mqtt_client, obj, flags, rc):
                 retry_time = 5
 
 
-def updating_writer(a, aas):
-    while True:
-        aas.logger_debug("updating the context")
-        _context = a._slaves
-        register = 3
-        slave_id = 0x00
-        address = 0x10
-        values = _context[slave_id].getValues(register, address, count=5)
-        values = [v + 1 for v in values]
-        aas.logger_debug("new values: " + str(values))
-        _context[slave_id].setValues(register, address, values)
-        time.sleep(5)
-
-
 def run_updating_server(aas_):
+    # prepare data context
     store = {}
     for slave in SlavesID:
         print(slave.value)
@@ -123,6 +110,7 @@ def run_updating_server(aas_):
 
     aas_.context = ModbusServerContext(slaves=store, single=False)
 
+    # prepare server identity
     identity = ModbusDeviceIdentification()
     identity.VendorName = 'FEKT VUTBR'
     identity.ProductCode = 'AAS'
@@ -150,8 +138,8 @@ if __name__ == "__main__":
     aas.logger().info("Core: ===================== Application start ========================")
     aas.logger().info("Script version: {}".format(__version__))
 
+    # connect to MQTT broker
     aas.mqtt().connect("localhost")
-    aas.mqtt().publish(LL_I2C_MSG_TOPIC, "I2C: prepared")
     aas.mqtt().on_connect = on_connect
     aas.mqtt().user_data_set(aas)
     aas.mqtt().message_callback_add(LL_TOUCH_TOPIC, on_touch)
