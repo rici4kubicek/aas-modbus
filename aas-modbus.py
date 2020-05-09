@@ -13,6 +13,7 @@ import json
 import msgpack
 from enum import Enum
 import os
+import subprocess
 
 __author__ = "Richard Kubicek"
 __copyright__ = "Copyright 2019, FEEC BUT Brno"
@@ -90,6 +91,7 @@ def on_touch(moqs, obj, msg):
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
             aas.logger_debug("new values: " + str(values))
+        # setup default values and then set received values
         obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, default_values)
         obj.context[aas.config["slave_id"]["buttons"]].setValues(4, 0, default_values)
         obj.context[aas.config["slave_id"]["buttons"]].setValues(3, 0, values)
@@ -118,6 +120,7 @@ def on_reader_read(moqs, obj, msg):
         else:  # if msgpack is not allow save bare json
             values = [ord(v) for v in msg.payload.decode("utf-8")]
             aas.logger_debug("new values: " + str(values))
+        # setup default values and then set received values
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, default_values)
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(4, 0, default_values)
         obj.context[aas.config["slave_id"]["reader_data_read"]].setValues(3, 0, values)
@@ -144,14 +147,16 @@ def on_connect(mosq, obj, flags, rc):
 
 def check_parse_and_send_values(aas_, topic, values_, default_val):
     diff = False
-    if values_ != default_val:
+    if values_ != default_val:  # compare values in data space with default values
         dta = bytearray()
+        # place values into bytearray
         for i in values_:
             if i != 0xffff:
                 dta.append(i & 0xff)
             if dta[len(dta) - 1] == 0:
                 dta.pop(len(dta) - 1)
 
+        # unpack data or get raw data
         if aas_.config["use_msgpack"]:
             try:
                 data = msgpack.unpackb(dta)
@@ -170,14 +175,17 @@ def check_parse_and_send_values(aas_, topic, values_, default_val):
 def get_written_values(aas_):
     default_values = [0xffff] * 254
     while True:
+        # led control
         values = aas_.context[aas_.config["slave_id"]["led"]].getValues(0x10, 0, 254)
         if check_parse_and_send_values(aas_, LL_LED_TOPIC, values, default_values):
             aas_.context[aas_.config["slave_id"]["led"]].setValues(0x10, 0, default_values)
 
+        # display control
         values = aas_.context[aas_.config["slave_id"]["display"]].getValues(0x10, 0, 254)
         if check_parse_and_send_values(aas_, LL_DISPLAY_TOPIC, values, default_values):
             aas_.context[aas_.config["slave_id"]["display"]].setValues(0x10, 0, default_values)
 
+        # rfid reader write commands
         values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
         if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
             aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
@@ -185,7 +193,7 @@ def get_written_values(aas_):
         time.sleep(1)
 
 
-def run_updating_server(aas_):
+def prepare_and_run_server(aas_):
     # prepare data context
     store = {}
     for key, value in aas.config["slave_id"].items():
@@ -204,19 +212,24 @@ def run_updating_server(aas_):
     identity.VendorUrl = 'https://www.fekt.vut.cz/'
     identity.ProductName = 'AAS modbus server'
     identity.ModelName = 'AAS module'
-    identity.MajorMinorRevision = '1.0.0'
+    identity.MajorMinorRevision = "{}".format(__version__)
 
     thread = Thread(target=get_written_values, args=(aas_,))
     thread.start()
 
-    StartTcpServer(aas_.context, identity=identity, address=("localhost", aas.config["port"]))
+    # get IP address for communication over network
+    cmd = "hostname -I | cut -d\' \' -f1"
+    ip = subprocess.check_output(cmd, shell=True)
+    ip = str(ip, "ascii")
+
+    StartTcpServer(aas_.context, identity=identity, address=(ip, aas_.config["port"]))
 
 
 if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("aas-modbus.txt")
+    fh = logging.FileHandler("/var/log/aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -254,4 +267,4 @@ if __name__ == "__main__":
 
     aas.mqtt().loop_start()
 
-    run_updating_server(aas)
+    prepare_and_run_server(aas)
