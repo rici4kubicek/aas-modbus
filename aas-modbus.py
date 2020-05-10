@@ -83,12 +83,16 @@ def on_touch(moqs, obj, msg):
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
     default_values = [0xffff] * 254
     try:
-        if obj.config["use_msgpack"]:
+        if obj.config["use_registers"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            values = list()
+            values.append(raw["button"])
+        elif obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             packed = msgpack.packb(raw)
 
             values = [v for v in packed]
-        else:  # if msgpack is not allow save bare json
+        else:  # if msgpack or registers are not allow use bare json in ascii
             values = [ord(v) for v in msg.payload.decode("utf-8")]
         aas.logger_debug("Buttons: new values: " + str(values))
         # setup default values and then set received values
@@ -111,12 +115,25 @@ def on_reader_read(moqs, obj, msg):
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
     default_values = [0xffff] * 254
     try:
-        if obj.config["use_msgpack"]:
+        if obj.config["use_registers"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            values = list()
+            for i in range(0, len(raw["uid"])):
+                values.append(raw["uid"][i])  # add uid to registers 0 - 4
+            values.append(0xffff)  # add 65535 as delimiter
+            values.append(raw["tag"]["tag_protocol"])  # add tag protocol to address 10
+            values.append(raw["tag"]["tag_size"])  # add tag size to address 11
+            values.append(0xffff)  # add 65535 as delimiter
+            for page in range(0, len(raw["data"])):
+                for val in range(0, 4):
+                    values.append(raw["data"][page][val])
+                values.append(0xffff)  # add 65535 as delimiter between pages
+        elif obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             packed = msgpack.packb(raw)
 
             values = [v for v in packed]
-        else:  # if msgpack is not allow save bare json
+        else:  # if msgpack or registers are not allow use bare json in ascii
             values = [ord(v) for v in msg.payload.decode("utf-8")]
         aas.logger_debug("Reader data read: new values: " + str(values))
         # setup default values and then set received values
@@ -139,12 +156,22 @@ def on_reader_status(moqs, obj, msg):
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
     default_values = [0xffff] * 254
     try:
-        if obj.config["use_msgpack"]:
+        if obj.config["use_registers"]:
+            raw = json.loads(msg.payload.decode("utf-8"))
+            values = list()
+            values.append(raw["write"]["sector"])
+            if raw["write"]["status"] == "OK":
+                values.append(1)
+            elif raw["write"]["status"] == "NOK":
+                values.append(0)
+            else:
+                values.append(0xffff)
+        elif obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             packed = msgpack.packb(raw)
 
             values = [v for v in packed]
-        else:  # if msgpack is not allow save bare json
+        else:  # if msgpack or registers are not allow use bare json in ascii
             values = [ord(v) for v in msg.payload.decode("utf-8")]
         aas.logger_debug("Reader status: new values: " + str(values))
         # setup default values and then set received values
@@ -160,6 +187,8 @@ def on_connect(mosq, obj, flags, rc):
     if rc == 0:
         obj.mqtt_ready = True
         obj.mqtt().subscribe(LL_TOUCH_TOPIC)
+        obj.mqtt().subscribe(LL_READER_STATUS_TOPIC)
+        obj.mqtt().subscribe(LL_READER_DATA_READ_TOPIC)
     else:
         obj.mqtt_ready = 0
         retry_time = 2
@@ -256,7 +285,7 @@ if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("/var/log/aas-modbus.txt")
+    fh = logging.FileHandler("aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -274,9 +303,15 @@ if __name__ == "__main__":
         cfg = open("config.json", "r")
         aas.config = json.load(cfg)
         aas.logger().info("Core: successful read configuration: {}".format(aas.config))
+
+        if aas.config["use_msgpack"] and aas.config["use_registers"]:
+            aas.logger().error("Core: only once from \"use_msgpack\" and \"use_registers\" can be set to true")
+            aas.logger().error("Core: program exit")
+            quit()
     else:
         aas.config["port"] = 5020
         aas.config["use_msgpack"] = True
+        aas.config["use_registers"] = False
         aas.config["slave_id"] = dict()
         aas.config["slave_id"]["reader_data_read"] = DefaultSlavesID.SLAVE_ID_READER_DATA_READ.value
         aas.config["slave_id"]["reader_data_write"] = DefaultSlavesID.SLAVE_ID_READER_DATA_WRITE.value
