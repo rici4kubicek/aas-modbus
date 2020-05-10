@@ -37,6 +37,9 @@ LL_READER_STATUS_TOPIC = LL_READER_TOPIC + "/state"
 LL_SPI_MSG_TOPIC = LL_SPI_TOPIC + "/msg"
 LL_LED_TOPIC = LL_SPI_TOPIC + "/led"
 
+DATA_DELIMETER = 0xfffe
+DATA_NONE = 0xffff
+
 
 class DefaultSlavesID(Enum):
     SLAVE_ID_READER_DATA_READ = 0
@@ -81,7 +84,7 @@ def on_touch(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
-    default_values = [0xffff] * 254
+    default_values = [DATA_NONE] * 254
     try:
         if obj.config["use_registers"]:
             raw = json.loads(msg.payload.decode("utf-8"))
@@ -113,21 +116,21 @@ def on_reader_read(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
-    default_values = [0xffff] * 254
+    default_values = [DATA_NONE] * 254
     try:
         if obj.config["use_registers"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             values = list()
             for i in range(0, len(raw["uid"])):
                 values.append(raw["uid"][i])  # add uid to registers 0 - 4
-            values.append(0xffff)  # add 65535 as delimiter
+            values.append(DATA_DELIMETER)  # add 65534 as delimiter
             values.append(raw["tag"]["tag_protocol"])  # add tag protocol to address 10
             values.append(raw["tag"]["tag_size"])  # add tag size to address 11
-            values.append(0xffff)  # add 65535 as delimiter
+            values.append(DATA_DELIMETER)  # add 65534 as delimiter
             for page in range(0, len(raw["data"])):
                 for val in range(0, 4):
                     values.append(raw["data"][page][val])
-                values.append(0xffff)  # add 65535 as delimiter between pages
+                values.append(DATA_DELIMETER)  # add 65534 as delimiter between pages
         elif obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             packed = msgpack.packb(raw)
@@ -154,7 +157,7 @@ def on_reader_status(moqs, obj, msg):
     :return:
     """
     obj.logger_debug("MQTT: topic: {}, data: {}".format(msg.topic, msg.payload.decode("utf-8")))
-    default_values = [0xffff] * 254
+    default_values = [DATA_NONE] * 254
     try:
         if obj.config["use_registers"]:
             raw = json.loads(msg.payload.decode("utf-8"))
@@ -165,7 +168,7 @@ def on_reader_status(moqs, obj, msg):
             elif raw["write"]["status"] == "NOK":
                 values.append(0)
             else:
-                values.append(0xffff)
+                values.append(DATA_NONE)
         elif obj.config["use_msgpack"]:
             raw = json.loads(msg.payload.decode("utf-8"))
             packed = msgpack.packb(raw)
@@ -201,24 +204,90 @@ def on_connect(mosq, obj, flags, rc):
                 retry_time = 5
 
 
-def check_parse_and_send_values(aas_, topic, values_, default_val):
+def check_parse_and_send_values_led(aas_, topic, values_, default_val):
     diff = False
     if values_ != default_val:  # compare values in data space with default values
         dta = bytearray()
         # place values into bytearray
         for i in values_:
-            if i != 0xffff:
+            if i != DATA_NONE:
                 dta.append(i & 0xff)
             if dta[len(dta) - 1] == 0:
                 dta.pop(len(dta) - 1)
 
         # unpack data or get raw data
-        if aas_.config["use_msgpack"]:
+        if aas_.config["use_registers"]:
+            if len(dta) != 4*4: # 4 bytes per LED
+                aas_.logger_error("LED registers: lack of data")
+            else:
+                data = {}
+                for led in range(0, 4):
+                    led_str = "led_{}".format(led)
+                    data[led_str]["red"] = dta[0 + 4*led]
+                    data[led_str]["green"] = dta[1 + 4*led]
+                    data[led_str]["blue"] = dta[2 + 4*led]
+                    data[led_str]["brightness"] = dta[3 + 4*led]
+        elif aas_.config["use_msgpack"]:
             try:
                 data = msgpack.unpackb(dta)
             except:
                 data = ""
                 aas_.logger_error("MessagePack: received msq cannot be processed")
+                diff = False
+        else:
+            data = dta.decode("utf-8")
+        aas_.mqtt().publish(topic, "{}".format(data))
+        diff = True
+        return diff
+    else:
+        return diff
+
+
+def check_parse_and_send_values_display(aas_, topic, values_, default_val):
+    diff = False
+    if values_ != default_val:  # compare values in data space with default values
+        dta = bytearray()
+        # place values into bytearray
+        for i in values_:
+            if i != DATA_NONE:
+                dta.append(i & 0xff)
+            if dta[len(dta) - 1] == DATA_NONE:
+                dta.pop(len(dta) - 1)
+
+        # unpack data or get raw data
+        if aas_.config["use_registers"]:
+            data = {}
+
+            if dta[0] == 0:
+                data["cmd"] = "clear"
+            elif dta[0] == 1:
+                data["cmd"] = "write"
+                data["pos_x"] = dta[1]
+                data["pos_y"] = dta[2]
+                tmp = bytearray()
+                font_end = 0
+                for i in range(3, len(dta)):
+                    if dta[i] != (DATA_DELIMETER & 0xff):
+                        tmp.append(dta[i])
+                    else:
+                        font_end = i
+                        break
+                data["font"] = tmp[:].decode("utf-8")
+                tmp = bytearray()
+                for i in range(font_end + 1, len(dta)):
+                    if dta[i] != DATA_NONE:
+                        tmp.append(dta[i])
+                data["text"] = tmp[:].decode("utf-8")
+
+            else:
+                aas_.logger_error("Display registers: unknown command")
+        elif aas_.config["use_msgpack"]:
+            try:
+                data = msgpack.unpackb(dta)
+            except:
+                data = ""
+                aas_.logger_error("MessagePack: received msq cannot be processed")
+                diff = False
         else:
             data = dta.decode("utf-8")
         aas_.mqtt().publish(topic, "{}".format(data))
@@ -233,18 +302,18 @@ def get_written_values(aas_):
     while True:
         # led control
         values = aas_.context[aas_.config["slave_id"]["led"]].getValues(0x10, 0, 254)
-        if check_parse_and_send_values(aas_, LL_LED_TOPIC, values, default_values):
+        if check_parse_and_send_values_led(aas_, LL_LED_TOPIC, values, default_values):
             aas_.context[aas_.config["slave_id"]["led"]].setValues(0x10, 0, default_values)
 
         # display control
         values = aas_.context[aas_.config["slave_id"]["display"]].getValues(0x10, 0, 254)
-        if check_parse_and_send_values(aas_, LL_DISPLAY_TOPIC, values, default_values):
+        if check_parse_and_send_values_display(aas_, LL_DISPLAY_TOPIC, values, default_values):
             aas_.context[aas_.config["slave_id"]["display"]].setValues(0x10, 0, default_values)
 
         # rfid reader write commands
-        values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
-        if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
-            aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
+        #values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
+        #if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
+            #aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
 
         time.sleep(1)
 
