@@ -217,16 +217,16 @@ def check_parse_and_send_values_led(aas_, topic, values_, default_val):
 
         # unpack data or get raw data
         if aas_.config["use_registers"]:
-            if len(dta) != 4*4: # 4 bytes per LED
+            if len(dta) != 4 * 4:  # 4 bytes per LED
                 aas_.logger_error("LED registers: lack of data")
             else:
                 data = {}
                 for led in range(0, 4):
                     led_str = "led_{}".format(led)
-                    data[led_str]["red"] = dta[0 + 4*led]
-                    data[led_str]["green"] = dta[1 + 4*led]
-                    data[led_str]["blue"] = dta[2 + 4*led]
-                    data[led_str]["brightness"] = dta[3 + 4*led]
+                    data[led_str]["red"] = dta[0 + 4 * led]
+                    data[led_str]["green"] = dta[1 + 4 * led]
+                    data[led_str]["blue"] = dta[2 + 4 * led]
+                    data[led_str]["brightness"] = dta[3 + 4 * led]
         elif aas_.config["use_msgpack"]:
             try:
                 data = msgpack.unpackb(dta)
@@ -260,8 +260,11 @@ def check_parse_and_send_values_display(aas_, topic, values_, default_val):
 
             if dta[0] == 0:
                 data["cmd"] = "clear"
-            elif dta[0] == 1:
-                data["cmd"] = "write"
+            elif dta[0] == 1 or dta[0] == 2:
+                if dta[0] == 1:
+                    data["cmd"] = "write"
+                if dta[0] == 2:
+                    data["cmd"] = "scroll"
                 data["pos_x"] = dta[1]
                 data["pos_y"] = dta[2]
                 tmp = bytearray()
@@ -311,9 +314,9 @@ def get_written_values(aas_):
             aas_.context[aas_.config["slave_id"]["display"]].setValues(0x10, 0, default_values)
 
         # rfid reader write commands
-        #values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
-        #if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
-            #aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
+        # values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
+        # if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
+        # aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
 
         time.sleep(1)
 
@@ -354,7 +357,7 @@ if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("aas-modbus.txt")
+    fh = logging.FileHandler("/var/log/aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
