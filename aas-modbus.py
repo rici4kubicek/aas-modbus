@@ -415,7 +415,7 @@ if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("aas-modbus.txt")
+    fh = logging.FileHandler("var/log/aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
