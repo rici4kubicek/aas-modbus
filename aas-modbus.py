@@ -300,6 +300,64 @@ def check_parse_and_send_values_display(aas_, topic, values_, default_val):
         return diff
 
 
+def check_parse_and_send_values_reader_write(aas_, topic, values_, default_val):
+    diff = False
+    if values_ != default_val:  # compare values in data space with default values
+        dta = list()
+        # place values into list
+        for i in values_:
+            if i != DATA_NONE:
+                dta.append(i)
+            if dta[len(dta) - 1] == DATA_NONE:
+                dta.pop(len(dta) - 1)
+
+        # unpack data or get raw data
+        if aas_.config["use_registers"]:
+            data = {}
+            sector_cnt = len(dta)/6
+            if int(len(dta)) % 6 != 0:
+                aas_.logger_error("Registers: received msq cannot be processed")
+            else:
+                if sector_cnt == 1:
+                    tmp_act = list()
+                    dta_act = dict()
+                    tmp_act.append(dta[0])
+                    tmp_act.append(dta[1])
+                    tmp_act.append(dta[2])
+                    tmp_act.append(dta[3])
+                    dta_act["sector"] = dta[4]
+                    dta_act["data"] = tmp_act
+                    data["write"] = dta_act
+                else:
+                    wl = list()
+                    for i in range(0, int(sector_cnt)):
+                        tmp_act = list()
+                        dta_act = dict()
+                        tmp_act.append(dta[0 + 6 * i])
+                        tmp_act.append(dta[1 + 6 * i])
+                        tmp_act.append(dta[2 + 6 * i])
+                        tmp_act.append(dta[3 + 6 * i])
+                        dta_act["sector"] = dta[4 + 6 * i]
+                        dta_act["data"] = tmp_act
+                        wl.append(dta_act)
+                    data["write_multi"] = wl
+        elif aas_.config["use_msgpack"]:
+            try:
+                data = msgpack.unpackb(dta)
+            except:
+                data = ""
+                aas_.logger_error("MessagePack: received msq cannot be processed")
+                diff = False
+        else:
+            data = dta.decode("utf-8")
+        
+        aas_.mqtt().publish(topic, "{}".format(data))
+        diff = True
+        return diff
+    else:
+        return diff
+
+
 def get_written_values(aas_):
     default_values = [0xffff] * 254
     while True:
@@ -314,9 +372,9 @@ def get_written_values(aas_):
             aas_.context[aas_.config["slave_id"]["display"]].setValues(0x10, 0, default_values)
 
         # rfid reader write commands
-        # values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
-        # if check_parse_and_send_values(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
-        # aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
+        values = aas_.context[aas_.config["slave_id"]["reader_data_write"]].getValues(0x10, 0, 254)
+        if check_parse_and_send_values_reader_write(aas_, LL_READER_DATA_WRITE_TOPIC, values, default_values):
+            aas_.context[aas_.config["slave_id"]["reader_data_write"]].setValues(0x10, 0, default_values)
 
         time.sleep(1)
 
@@ -357,7 +415,7 @@ if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger().setLevel(logging.DEBUG)
-    fh = logging.FileHandler("/var/log/aas-modbus.txt")
+    fh = logging.FileHandler("aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
