@@ -2,6 +2,13 @@ import msgpack
 import json
 
 data = {}
+data = json.loads("{\"button\": 5}")
+packed = msgpack.packb(data)
+print(packed)
+
+print(''.join(' {:02x}'.format(x) for x in packed))
+
+data = {}
 data = json.loads("{ \"uid\": [ 136, 4, 106, 105, 143 ], \"tag\": { \"tag_vendor\": \"NXP\", \"user_memory_offset\": "
                   "4, \"tag_type\": \"NTAG213\", \"tag_protocol\": 3, \"tag_size\": 144 }, \"data\": [ [ 4, 106, 105, "
                   "143 ], [ 66, 236, 76, 129 ], [ 99, 72, 0, 0 ], [ 225, 16, 18, 0 ], [ 21, 22, 31, 32 ], [ 52, 3, 0, "
