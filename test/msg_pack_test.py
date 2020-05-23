@@ -7,6 +7,9 @@ packed = msgpack.packb(data)
 print(packed)
 
 print(''.join(' {:02x}'.format(x) for x in packed))
+val_ascii = [ord(v) for v in "{\"button\": 5}"]
+print(val_ascii)
+print(''.join(' 0x{:02x}'.format(x) for x in val_ascii))
 
 data = {}
 data = json.loads("{ \"uid\": [ 136, 4, 106, 105, 143 ], \"tag\": { \"tag_vendor\": \"NXP\", \"user_memory_offset\": "
