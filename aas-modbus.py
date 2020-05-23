@@ -16,10 +16,10 @@ import os
 import subprocess
 
 __author__ = "Richard Kubicek"
-__copyright__ = "Copyright 2019, FEEC BUT Brno"
+__copyright__ = "Copyright 2020, FEEC BUT Brno"
 __credits__ = ["Richard Kubicek"]
 __license__ = "Proprietary"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Richard Kubicek"
 __email__ = "xkubic35@vutbr.cz"
 __status__ = "Private Beta"
@@ -122,7 +122,7 @@ def on_reader_read(moqs, obj, msg):
             raw = json.loads(msg.payload.decode("utf-8"))
             values = list()
             for i in range(0, len(raw["uid"])):
-                values.append(raw["uid"][i])  # add uid to registers 0 - 4
+                values.append(raw["uid"][i])  # add uid to registers 0 - 6
             values.append(DATA_DELIMETER)  # add 65534 as delimiter
             values.append(raw["tag"]["tag_protocol"])  # add tag protocol to address 10
             values.append(raw["tag"]["tag_size"])  # add tag size to address 11
