@@ -51,28 +51,21 @@ class DefaultSlavesID(Enum):
 
 
 class Aas:
-    _mqtt = mqtt_client.Client()
-    _logger = logging.getLogger()
-
     def __init__(self):
         self.mqtt_ready = False
         self.context = None
         self.config = {}
+        self.mqtt = mqtt_client.Client()
+        self.logger = logging.getLogger()
 
     def publish(self, topic, data):
-        self._mqtt.publish(topic, data)
-
-    def mqtt(self):
-        return self._mqtt
-
-    def logger(self):
-        return self._logger
+        self.mqtt.publish(topic, data)
 
     def logger_debug(self, _str):
-        self._logger.debug(_str)
+        self.logger.debug(_str)
 
     def logger_error(self, _str):
-        self._logger.error(_str)
+        self.logger.error(_str)
 
 
 def on_touch(moqs, obj, msg):
@@ -189,9 +182,9 @@ def on_reader_status(moqs, obj, msg):
 def on_connect(mosq, obj, flags, rc):
     if rc == 0:
         obj.mqtt_ready = True
-        obj.mqtt().subscribe(LL_TOUCH_TOPIC)
-        obj.mqtt().subscribe(LL_READER_STATUS_TOPIC)
-        obj.mqtt().subscribe(LL_READER_DATA_READ_TOPIC)
+        obj.mqtt.subscribe(LL_TOUCH_TOPIC)
+        obj.mqtt.subscribe(LL_READER_STATUS_TOPIC)
+        obj.mqtt.subscribe(LL_READER_DATA_READ_TOPIC)
     else:
         obj.mqtt_ready = 0
         retry_time = 2
@@ -236,7 +229,7 @@ def check_parse_and_send_values_led(aas_, topic, values_, default_val):
                 diff = False
         else:
             data = dta.decode("utf-8")
-        aas_.mqtt().publish(topic, "{}".format(data))
+        aas_.publish(topic, "{}".format(data))
         diff = True
         return diff
     else:
@@ -293,7 +286,7 @@ def check_parse_and_send_values_display(aas_, topic, values_, default_val):
                 diff = False
         else:
             data = dta.decode("utf-8")
-        aas_.mqtt().publish(topic, "{}".format(data))
+        aas_.publish(topic, "{}".format(data))
         diff = True
         return diff
     else:
@@ -350,8 +343,8 @@ def check_parse_and_send_values_reader_write(aas_, topic, values_, default_val):
                 diff = False
         else:
             data = dta.decode("utf-8")
-        
-        aas_.mqtt().publish(topic, "{}".format(data))
+
+        aas_.publish(topic, "{}".format(data))
         diff = True
         return diff
     else:
@@ -414,7 +407,7 @@ def prepare_and_run_server(aas_):
 if __name__ == "__main__":
     aas = Aas()
     # setup logger
-    aas.logger().setLevel(logging.DEBUG)
+    aas.logger.setLevel(logging.DEBUG)
     fh = logging.FileHandler("var/log/aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -422,21 +415,21 @@ if __name__ == "__main__":
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
-    aas.logger().addHandler(fh)
-    aas.logger().addHandler(ch)
+    aas.logger.addHandler(fh)
+    aas.logger.addHandler(ch)
 
-    aas.logger().info("Core: ===================== Application start ========================")
-    aas.logger().info("Script version: {}".format(__version__))
+    aas.logger.info("Core: ===================== Application start ========================")
+    aas.logger.info("Script version: {}".format(__version__))
 
     # prepare configuration
     if os.path.isfile("config.json"):
         cfg = open("config.json", "r")
         aas.config = json.load(cfg)
-        aas.logger().info("Core: successful read configuration: {}".format(aas.config))
+        aas.logger.info("Core: successful read configuration: {}".format(aas.config))
 
         if aas.config["use_msgpack"] and aas.config["use_registers"]:
-            aas.logger().error("Core: only once from \"use_msgpack\" and \"use_registers\" can be set to true")
-            aas.logger().error("Core: program exit")
+            aas.logger.error("Core: only once from \"use_msgpack\" and \"use_registers\" can be set to true")
+            aas.logger.error("Core: program exit")
             quit()
     else:
         aas.config["port"] = 5020
@@ -449,16 +442,16 @@ if __name__ == "__main__":
         aas.config["slave_id"]["buttons"] = DefaultSlavesID.SLAVE_ID_BUTTONS.value
         aas.config["slave_id"]["display"] = DefaultSlavesID.SLAVE_ID_DISPLAY.value
         aas.config["slave_id"]["led"] = DefaultSlavesID.SLAVE_ID_LED.value
-        aas.logger().error("Core: Set default configuration: {}".format(aas.config))
+        aas.logger.error("Core: Set default configuration: {}".format(aas.config))
 
     # connect to MQTT broker
-    aas.mqtt().connect("localhost")
-    aas.mqtt().on_connect = on_connect
-    aas.mqtt().user_data_set(aas)
-    aas.mqtt().message_callback_add(LL_TOUCH_TOPIC, on_touch)
-    aas.mqtt().message_callback_add(LL_READER_DATA_READ_TOPIC, on_reader_read)
-    aas.mqtt().message_callback_add(LL_READER_STATUS_TOPIC, on_reader_status)
+    aas.mqtt.connect("localhost")
+    aas.mqtt.on_connect = on_connect
+    aas.mqtt.user_data_set(aas)
+    aas.mqtt.message_callback_add(LL_TOUCH_TOPIC, on_touch)
+    aas.mqtt.message_callback_add(LL_READER_DATA_READ_TOPIC, on_reader_read)
+    aas.mqtt.message_callback_add(LL_READER_STATUS_TOPIC, on_reader_status)
 
-    aas.mqtt().loop_start()
+    aas.mqtt.loop_start()
 
     prepare_and_run_server(aas)
