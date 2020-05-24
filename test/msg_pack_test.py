@@ -6,7 +6,7 @@ data = json.loads("{\"button\": 5}")
 packed = msgpack.packb(data)
 print(packed)
 
-print(''.join(' {:02x}'.format(x) for x in packed))
+print(''.join(' 0x{:02x}'.format(x) for x in packed))
 val_ascii = [ord(v) for v in "{\"button\": 5}"]
 print(val_ascii)
 print(''.join(' 0x{:02x}'.format(x) for x in val_ascii))
