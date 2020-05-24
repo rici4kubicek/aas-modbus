@@ -214,7 +214,10 @@ def check_parse_and_send_values_led(aas_, topic, values_, default_val):
             if len(dta) != 4 * 4:  # 4 bytes per LED
                 aas_.logger_error("LED registers: lack of data")
             else:
-                data = {}
+                data = json.loads("{\"led_0\":{\"brightness\":0,\"red\":0,\"green\":0,\"blue\":0},\"led_1\":{"
+                                 "\"brightness\":0,\"red\":0,\"green\":0,\"blue\":0},\"led_2\":{\"brightness\":0,"
+                                 "\"red\":0,\"green\":0,\"blue\":0},\"led_3\":{\"brightness\":0,\"red\":0,"
+                                 "\"green\":0,\"blue\":0}}")
                 for led in range(0, 4):
                     led_str = "led_{}".format(led)
                     data[led_str]["red"] = dta[0 + 4 * led]
@@ -302,13 +305,11 @@ def check_parse_and_send_values_reader_write(aas_, topic, values_, default_val):
         for i in values_:
             if i != DATA_NONE:
                 dta.append(i)
-            if dta[len(dta) - 1] == DATA_NONE:
-                dta.pop(len(dta) - 1)
 
         # unpack data or get raw data
         if aas_.config["use_registers"]:
             data = {}
-            sector_cnt = len(dta)/6
+            sector_cnt = (len(dta))/6
             if int(len(dta)) % 6 != 0:
                 aas_.logger_error("Registers: received msq cannot be processed")
             else:
@@ -337,7 +338,10 @@ def check_parse_and_send_values_reader_write(aas_, topic, values_, default_val):
                     data["write_multi"] = wl
         elif aas_.config["use_msgpack"]:
             try:
-                data = msgpack.unpackb(dta)
+                dta_byte = bytearray()
+                for i in range(0, len(dta)):
+                    dta_byte.append(dta[i])
+                data = msgpack.unpackb(dta_byte)
             except:
                 data = ""
                 aas_.logger_error("MessagePack: received msq cannot be processed")
@@ -409,7 +413,10 @@ if __name__ == "__main__":
     aas = Aas()
     # setup logger
     aas.logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler("var/log/aas-modbus.txt")
+    try:
+        fh = logging.FileHandler("var/log/aas-modbus.txt")
+    except FileNotFoundError:
+        fh = logging.FileHandler("aas-modbus.txt")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
